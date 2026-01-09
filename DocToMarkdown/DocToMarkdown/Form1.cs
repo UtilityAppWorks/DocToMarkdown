@@ -359,6 +359,10 @@ namespace DocToMarkdown
 
             markdown.AppendLine($"# {Path.GetFileNameWithoutExtension(filePath)}");
             markdown.AppendLine();
+            markdown.AppendLine("> **Document Type:** Plain Text File");
+            markdown.AppendLine();
+            markdown.AppendLine("---");
+            markdown.AppendLine();
 
             string[] lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
             foreach (string line in lines)
@@ -373,6 +377,10 @@ namespace DocToMarkdown
         {
             StringBuilder markdown = new StringBuilder();
             markdown.AppendLine($"# {Path.GetFileNameWithoutExtension(filePath)}");
+            markdown.AppendLine();
+            markdown.AppendLine("> **Document Type:** Word Document (DOCX)");
+            markdown.AppendLine();
+            markdown.AppendLine("---");
             markdown.AppendLine();
 
             string tempDir = null;
@@ -618,7 +626,8 @@ namespace DocToMarkdown
             StringBuilder markdown = new StringBuilder();
             markdown.AppendLine($"# {Path.GetFileNameWithoutExtension(filePath)}");
             markdown.AppendLine();
-            markdown.AppendLine("> 注意: .doc形式は限定的なサポートです。より良い結果を得るには.docx形式に変換してください。");
+            markdown.AppendLine("> **Document Type:** Word Document (DOC - Legacy Format)");
+            markdown.AppendLine("> **Note:** .doc format has limited support. For better results, convert to .docx format");
             markdown.AppendLine();
 
             try
@@ -699,6 +708,8 @@ namespace DocToMarkdown
             StringBuilder markdown = new StringBuilder();
             markdown.AppendLine($"# {Path.GetFileNameWithoutExtension(filePath)}");
             markdown.AppendLine();
+            markdown.AppendLine("> **Document Type:** PDF Document");
+            markdown.AppendLine();
 
             try
             {
@@ -729,22 +740,11 @@ namespace DocToMarkdown
                 }
                 else
                 {
-                    // PDFの可読性向上のために行分割（疑似改行）
+                    // PDFの可読性向上のために行分割（疑似改行）とセマンティック構造の追加
                     pdfText = ImprovePdfReadabilityByInsertingLineBreaks(pdfText);
+                    pdfText = AddStructureToPdfContent(pdfText);
 
-                    string[] lines = pdfText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-                    foreach (string line in lines)
-                    {
-                        string trimmedLine = line.TrimEnd();
-                        if (!string.IsNullOrWhiteSpace(trimmedLine))
-                        {
-                            markdown.AppendLine(trimmedLine);
-                        }
-                        else
-                        {
-                            markdown.AppendLine();
-                        }
-                    }
+                    markdown.AppendLine(pdfText);
                 }
             }
             catch (Exception ex)
@@ -754,6 +754,62 @@ namespace DocToMarkdown
             }
 
             return markdown.ToString();
+        }
+
+        private string AddStructureToPdfContent(string pdfText)
+        {
+            if (string.IsNullOrWhiteSpace(pdfText)) return pdfText;
+
+            var sb = new StringBuilder();
+            string[] lines = pdfText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i];
+                string trimmedLine = line.TrimEnd();
+
+                if (string.IsNullOrWhiteSpace(trimmedLine))
+                {
+                    sb.AppendLine();
+                    continue;
+                }
+
+                // Detect heading-like lines and format as markdown headings
+                if (LooksLikeHeadingLine(trimmedLine))
+                {
+                    // Determine heading level based on length and context
+                    int level = 2; // Default to ##
+                    int width = GetVisualWidth(trimmedLine);
+                    if (width <= 15) level = 2;
+                    else if (width <= 30) level = 3;
+                    else level = 4;
+
+                    sb.AppendLine($"{new string('#', level)} {trimmedLine}");
+                    sb.AppendLine();
+                    continue;
+                }
+
+                // Detect list items and format them properly
+                if (Regex.IsMatch(trimmedLine, @"^[\s]*[•\-\*○●◆◇■□▪▫][\s]+"))
+                {
+                    // Bullet point
+                    string content = Regex.Replace(trimmedLine, @"^[\s]*[•\-\*○●◆◇■□▪▫][\s]+", "");
+                    sb.AppendLine($"- {content}");
+                    continue;
+                }
+                else if (Regex.IsMatch(trimmedLine, @"^[\s]*[\d]+[\.\)][\s]+"))
+                {
+                    // Numbered list
+                    string content = Regex.Replace(trimmedLine, @"^[\s]*[\d]+[\.\)][\s]+", "");
+                    sb.AppendLine($"- {content}");
+                    continue;
+                }
+
+                // Regular text
+                sb.AppendLine(trimmedLine);
+            }
+
+            return sb.ToString().Trim();
         }
 
         private string ImprovePdfReadabilityByInsertingLineBreaks(string text)
@@ -1162,7 +1218,8 @@ namespace DocToMarkdown
             var markdown = new StringBuilder();
             markdown.AppendLine($"# {Path.GetFileNameWithoutExtension(filePath)}");
             markdown.AppendLine();
-            markdown.AppendLine("> 注意: PowerPoint の抽出には Microsoft PowerPoint が必要です（COMオートメーション）。");
+            markdown.AppendLine("> **Document Type:** PowerPoint Presentation");
+            markdown.AppendLine("> **Note:** PowerPoint extraction requires Microsoft PowerPoint (COM Automation)");
             markdown.AppendLine();
 
             try
@@ -1175,6 +1232,11 @@ namespace DocToMarkdown
                     return markdown.ToString();
                 }
 
+                markdown.AppendLine($"**Total Slides:** {slides.Count}");
+                markdown.AppendLine();
+                markdown.AppendLine("---");
+                markdown.AppendLine();
+
                 for (int i = 0; i < slides.Count; i++)
                 {
                     var s = slides[i];
@@ -1183,21 +1245,50 @@ namespace DocToMarkdown
 
                     if (!string.IsNullOrWhiteSpace(s.Title))
                     {
-                        markdown.AppendLine($"**{s.Title.Trim()}**");
+                        markdown.AppendLine($"### {s.Title.Trim()}");
                         markdown.AppendLine();
                     }
 
                     if (string.IsNullOrWhiteSpace(s.Text))
                     {
-                        markdown.AppendLine("> テキストがありません。");
+                        markdown.AppendLine("> _No text content in this slide_");
                         markdown.AppendLine();
                         continue;
                     }
 
+                    // Format text content with better structure
+                    markdown.AppendLine("**Content:**");
+                    markdown.AppendLine();
+                    
                     foreach (var line in s.Text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None))
                     {
-                        var t = (line ?? string.Empty).TrimEnd();
-                        markdown.AppendLine(t);
+                        var t = (line ?? string.Empty).Trim();
+                        if (string.IsNullOrWhiteSpace(t)) continue;
+                        
+                        // Check if line looks like a bullet point or list item
+                        if (Regex.IsMatch(t, @"^[•\-\*○●◆◇■□▪▫]\s*"))
+                        {
+                            // Already has a bullet marker
+                            markdown.AppendLine($"- {t.Substring(1).Trim()}");
+                        }
+                        else if (Regex.IsMatch(t, @"^\d+[\.\)]\s+"))
+                        {
+                            // Numbered list
+                            markdown.AppendLine($"- {t}");
+                        }
+                        else
+                        {
+                            // Regular text - check if it's short enough to be a bullet point
+                            if (t.Length < 150 && !t.EndsWith("。") && !t.EndsWith(".") && s.Text.Split('\n').Length > 3)
+                            {
+                                markdown.AppendLine($"- {t}");
+                            }
+                            else
+                            {
+                                markdown.AppendLine(t);
+                                markdown.AppendLine();
+                            }
+                        }
                     }
                     markdown.AppendLine();
                 }
@@ -1366,7 +1457,8 @@ namespace DocToMarkdown
             StringBuilder markdown = new StringBuilder();
             markdown.AppendLine($"# {Path.GetFileNameWithoutExtension(filePath)}");
             markdown.AppendLine();
-            markdown.AppendLine("> 注意: Excel の抽出には Microsoft Excel が必要です（COMオートメーション）。");
+            markdown.AppendLine("> **Document Type:** Excel Spreadsheet");
+            markdown.AppendLine("> **Note:** Excel extraction requires Microsoft Excel (COM Automation)");
             markdown.AppendLine();
 
             try
@@ -1379,17 +1471,27 @@ namespace DocToMarkdown
                     return markdown.ToString();
                 }
 
+                markdown.AppendLine($"**Total Sheets:** {tables.Count}");
+                markdown.AppendLine();
+                markdown.AppendLine("---");
+                markdown.AppendLine();
+
                 foreach (var t in tables)
                 {
-                    markdown.AppendLine($"## {t.SheetName}");
+                    markdown.AppendLine($"## Sheet: {t.SheetName}");
                     markdown.AppendLine();
 
                     if (t.Rows.Count == 0)
                     {
-                        markdown.AppendLine("> データがありません。");
+                        markdown.AppendLine("> _No data in this sheet_");
                         markdown.AppendLine();
                         continue;
                     }
+
+                    int rowCount = t.Rows.Count;
+                    int colCount = t.Rows.Max(r => r?.Count ?? 0);
+                    markdown.AppendLine($"**Dimensions:** {rowCount} rows × {colCount} columns");
+                    markdown.AppendLine();
 
                     markdown.AppendLine(BuildMarkdownTable(t.Rows));
                     markdown.AppendLine();
