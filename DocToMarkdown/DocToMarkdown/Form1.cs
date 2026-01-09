@@ -684,18 +684,28 @@ namespace DocToMarkdown
             }
             finally
             {
-                try { if (doc != null) { try { doc.Close(false); } catch { } } } catch { }
-                try { if (wordApp != null) { try { wordApp.Quit(false); } catch { } } } catch { }
-
-                try { if (doc != null) Marshal.FinalReleaseComObject(doc); } catch { }
-                try { if (wordApp != null) Marshal.FinalReleaseComObject(wordApp); } catch { }
-
-                try
+                // Close and cleanup COM objects carefully to avoid DisconnectedContext errors
+                if (doc != null)
                 {
+                    try { doc.Close(false); } catch { }
+                    try
+                    {
+                        while (Marshal.ReleaseComObject(doc) > 0) { }
+                    }
+                    catch { }
                     doc = null;
+                }
+
+                if (wordApp != null)
+                {
+                    try { wordApp.Quit(false); } catch { }
+                    try
+                    {
+                        while (Marshal.ReleaseComObject(wordApp) > 0) { }
+                    }
+                    catch { }
                     wordApp = null;
                 }
-                catch { }
 
                 // RCW回収を促進
                 try
@@ -703,7 +713,6 @@ namespace DocToMarkdown
                     GC.Collect();
                     GC.WaitForPendingFinalizers();
                     GC.Collect();
-                    GC.WaitForPendingFinalizers();
                 }
                 catch { }
             }
@@ -1379,13 +1388,19 @@ namespace DocToMarkdown
                                     catch { }
                                     finally
                                     {
-                                        if (sh != null) Marshal.FinalReleaseComObject(sh);
+                                        if (sh != null)
+                                        {
+                                            try { while (Marshal.ReleaseComObject(sh) > 0) { } } catch { }
+                                        }
                                     }
                                 }
                             }
                             finally
                             {
-                                if (shapes != null) Marshal.FinalReleaseComObject(shapes);
+                                if (shapes != null)
+                                {
+                                    try { while (Marshal.ReleaseComObject(shapes) > 0) { } } catch { }
+                                }
                             }
 
                             body = sb.ToString().Trim();
@@ -1401,7 +1416,10 @@ namespace DocToMarkdown
                     }
                     finally
                     {
-                        if (slide != null) Marshal.FinalReleaseComObject(slide);
+                        if (slide != null)
+                        {
+                            try { while (Marshal.ReleaseComObject(slide) > 0) { } } catch { }
+                        }
                     }
                 }
 
@@ -1409,40 +1427,35 @@ namespace DocToMarkdown
             }
             finally
             {
-                try
+                // Close and cleanup COM objects carefully to avoid DisconnectedContext errors
+                if (presentation != null)
                 {
-                    if (presentation != null)
+                    try { presentation.Close(); } catch { }
+                    try
                     {
-                        try { presentation.Close(); } catch { }
+                        while (Marshal.ReleaseComObject(presentation) > 0) { }
                     }
-                }
-                catch { }
-
-                try
-                {
-                    if (pptApp != null)
-                    {
-                        try { pptApp.Quit(); } catch { }
-                    }
-                }
-                catch { }
-
-                try { if (presentation != null) Marshal.FinalReleaseComObject(presentation); } catch { }
-                try { if (pptApp != null) Marshal.FinalReleaseComObject(pptApp); } catch { }
-
-                try
-                {
+                    catch { }
                     presentation = null;
+                }
+
+                if (pptApp != null)
+                {
+                    try { pptApp.Quit(); } catch { }
+                    try
+                    {
+                        while (Marshal.ReleaseComObject(pptApp) > 0) { }
+                    }
+                    catch { }
                     pptApp = null;
                 }
-                catch { }
 
+                // RCW回収を促進
                 try
                 {
                     GC.Collect();
                     GC.WaitForPendingFinalizers();
                     GC.Collect();
-                    GC.WaitForPendingFinalizers();
                 }
                 catch { }
             }
@@ -1606,7 +1619,10 @@ namespace DocToMarkdown
                                     }
                                     finally
                                     {
-                                        if (cell != null) Marshal.FinalReleaseComObject(cell);
+                                        if (cell != null)
+                                        {
+                                            try { while (Marshal.ReleaseComObject(cell) > 0) { } } catch { }
+                                        }
                                     }
                                 }
                                 rows2.Add(row);
@@ -1644,8 +1660,14 @@ namespace DocToMarkdown
                     }
                     finally
                     {
-                        if (usedRange != null) Marshal.FinalReleaseComObject(usedRange);
-                        if (sheet != null) Marshal.FinalReleaseComObject(sheet);
+                        if (usedRange != null)
+                        {
+                            try { while (Marshal.ReleaseComObject(usedRange) > 0) { } } catch { }
+                        }
+                        if (sheet != null)
+                        {
+                            try { while (Marshal.ReleaseComObject(sheet) > 0) { } } catch { }
+                        }
                     }
                 }
 
@@ -1659,48 +1681,35 @@ namespace DocToMarkdown
 
         private void SafeCloseExcelComObjects(dynamic workbook, dynamic excelApp)
         {
-            try
+            // Close and cleanup COM objects carefully to avoid DisconnectedContext errors
+            if (workbook != null)
             {
+                try { workbook.Close(false); } catch { }
                 try
                 {
-                    if (workbook != null)
-                    {
-                        try { workbook.Close(false); } catch { }
-                    }
+                    while (Marshal.ReleaseComObject(workbook) > 0) { }
                 }
                 catch { }
-
-                try { if (workbook != null) Marshal.FinalReleaseComObject(workbook); } catch { }
-            }
-            finally
-            {
                 workbook = null;
             }
 
-            try
+            if (excelApp != null)
             {
+                try { excelApp.Quit(); } catch { }
                 try
                 {
-                    if (excelApp != null)
-                    {
-                        try { excelApp.Quit(); } catch { }
-                    }
+                    while (Marshal.ReleaseComObject(excelApp) > 0) { }
                 }
                 catch { }
-
-                try { if (excelApp != null) Marshal.FinalReleaseComObject(excelApp); } catch { }
-            }
-            finally
-            {
                 excelApp = null;
             }
 
+            // RCW回収を促進
             try
             {
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
                 GC.Collect();
-                GC.WaitForPendingFinalizers();
             }
             catch { }
         }
