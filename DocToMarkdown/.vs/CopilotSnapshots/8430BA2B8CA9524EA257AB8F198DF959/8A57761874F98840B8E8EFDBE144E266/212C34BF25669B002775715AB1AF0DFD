@@ -1,0 +1,938 @@
+﻿#define PDFPIG
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.Xml.Linq;
+
+// PDF抽出を高精度にする場合はPDF用ライブラリを導入し、PDFPIG 定義を有効化してください。
+// 例: UglyToad.PdfPig (NuGet)
+// 導入後、プロジェクトのビルド定義に PDFPIG を追加するか、ここを #define PDFPIG にしてください。
+
+#if PDFPIG
+using UglyToad.PdfPig;
+using UglyToad.PdfPig.Content;
+#endif
+
+namespace DocToMarkdown
+{
+    public partial class Form1 : Form
+    {
+        private List<string> selectedFiles = new List<string>();
+
+        public Form1()
+        {
+            InitializeComponent();
+        }
+
+        private void btnSelectFiles_Click(object sender, EventArgs e)
+        {
+            using (OpenFileDialog openFileDialog = new OpenFileDialog())
+            {
+                openFileDialog.Filter = "対応ファイル (*.pdf;*.docx;*.doc;*.txt)|*.pdf;*.docx;*.doc;*.txt|" +
+                                        "PDF ファイル (*.pdf)|*.pdf|" +
+                                        "Word ファイル (*.docx;*.doc)|*.docx;*.doc|" +
+                                        "テキストファイル (*.txt)|*.txt|" +
+                                        "すべてのファイル (*.*)|*.*";
+                openFileDialog.Multiselect = true;
+                openFileDialog.Title = "変換するファイルを選択";
+
+                if (openFileDialog.ShowDialog() == DialogResult.OK)
+                {
+                    foreach (string file in openFileDialog.FileNames)
+                    {
+                        if (!selectedFiles.Contains(file))
+                        {
+                            selectedFiles.Add(file);
+                            listBoxFiles.Items.Add(file);
+                        }
+                    }
+                    txtInputFiles.Text = $"{selectedFiles.Count} ファイル選択中";
+                }
+            }
+        }
+
+        private void btnSelectOutputFolder_Click(object sender, EventArgs e)
+        {
+            using (FolderBrowserDialog folderDialog = new FolderBrowserDialog())
+            {
+                folderDialog.Description = "出力先フォルダを選択してください";
+                folderDialog.ShowNewFolderButton = true;
+
+                if (folderDialog.ShowDialog() == DialogResult.OK)
+                {
+                    txtOutputFolder.Text = folderDialog.SelectedPath;
+                }
+            }
+        }
+
+        private void btnClearFiles_Click(object sender, EventArgs e)
+        {
+            selectedFiles.Clear();
+            listBoxFiles.Items.Clear();
+            txtInputFiles.Text = "";
+        }
+
+        private async void btnConvert_Click(object sender, EventArgs e)
+        {
+            if (selectedFiles.Count == 0)
+            {
+                MessageBox.Show("変換するファイルを選択してください。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (string.IsNullOrEmpty(txtOutputFolder.Text))
+            {
+                MessageBox.Show("出力先フォルダを選択してください。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            btnConvert.Enabled = false;
+            btnSelectFiles.Enabled = false;
+            btnSelectOutputFolder.Enabled = false;
+            btnClearFiles.Enabled = false;
+            progressBar.Value = 0;
+            progressBar.Maximum = selectedFiles.Count;
+            txtLog.Clear();
+
+            int successCount = 0;
+            int failCount = 0;
+            string outputFolder = txtOutputFolder.Text;
+            List<string> filesToProcess = new List<string>(selectedFiles);
+
+            await Task.Run(() =>
+            {
+                for (int i = 0; i < filesToProcess.Count; i++)
+                {
+                    string file = filesToProcess[i];
+                    string fileName = Path.GetFileNameWithoutExtension(file);
+                    string extension = Path.GetExtension(file).ToLower();
+                    string outputPath = Path.Combine(outputFolder, fileName + ".md");
+
+                    UpdateStatus($"変換中: {Path.GetFileName(file)} ({i + 1}/{filesToProcess.Count})");
+
+                    try
+                    {
+                        string markdown = ConvertToMarkdown(file, extension);
+
+                        // 大きすぎるMarkdownは分割して保存（ビューアのフリーズ回避）
+                        SaveMarkdownWithSplitting(outputFolder, fileName, markdown);
+
+                        AppendLog($"[成功] {Path.GetFileName(file)} → {fileName}.md");
+                        successCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        AppendLog($"[失敗] {Path.GetFileName(file)}: {ex.Message}");
+                        failCount++;
+                    }
+
+                    UpdateProgress(i + 1);
+                }
+            });
+
+            UpdateStatus($"完了: 成功 {successCount} 件, 失敗 {failCount} 件");
+
+            btnConvert.Enabled = true;
+            btnSelectFiles.Enabled = true;
+            btnSelectOutputFolder.Enabled = true;
+            btnClearFiles.Enabled = true;
+
+            MessageBox.Show($"変換が完了しました。\n成功: {successCount} 件\n失敗: {failCount} 件",
+                "完了", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private string ConvertToMarkdown(string filePath, string extension)
+        {
+            switch (extension)
+            {
+                case ".txt":
+                    return ConvertTxtToMarkdown(filePath);
+                case ".docx":
+                    return ConvertDocxToMarkdown(filePath);
+                case ".doc":
+                    return ConvertDocToMarkdown(filePath);
+                case ".pdf":
+                    return ConvertPdfToMarkdown(filePath);
+                default:
+                    throw new NotSupportedException($"未対応のファイル形式: {extension}");
+            }
+        }
+
+        private string ConvertTxtToMarkdown(string filePath)
+        {
+            string content = File.ReadAllText(filePath, DetectEncoding(filePath));
+            StringBuilder markdown = new StringBuilder();
+
+            markdown.AppendLine($"# {Path.GetFileNameWithoutExtension(filePath)}");
+            markdown.AppendLine();
+
+            string[] lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            foreach (string line in lines)
+            {
+                markdown.AppendLine(line);
+            }
+
+            return markdown.ToString();
+        }
+
+        private string ConvertDocxToMarkdown(string filePath)
+        {
+            StringBuilder markdown = new StringBuilder();
+            markdown.AppendLine($"# {Path.GetFileNameWithoutExtension(filePath)}");
+            markdown.AppendLine();
+
+            string tempDir = null;
+            try
+            {
+                // .docxはZIPファイル形式。一時フォルダに展開してXMLを読み取る
+                tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+                Directory.CreateDirectory(tempDir);
+
+                // ZIPとして展開
+                ExtractDocx(filePath, tempDir);
+
+                string documentPath = Path.Combine(tempDir, "word", "document.xml");
+                if (File.Exists(documentPath))
+                {
+                    XDocument doc = XDocument.Load(documentPath);
+                    XNamespace w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+
+                    var paragraphs = doc.Descendants(w + "p");
+                    bool inList = false;
+
+                    foreach (var para in paragraphs)
+                    {
+                        // スタイル情報を取得
+                        var pStyle = para.Element(w + "pPr")?.Element(w + "pStyle")?.Attribute(w + "val")?.Value ?? "";
+                        var numPr = para.Element(w + "pPr")?.Element(w + "numPr");
+
+                        // 書式付きテキストを処理
+                        string text = ProcessFormattedText(para, w);
+
+                        if (string.IsNullOrWhiteSpace(text))
+                        {
+                            if (inList)
+                            {
+                                inList = false;
+                            }
+                            markdown.AppendLine();
+                            continue;
+                        }
+
+                        // 見出しスタイルの処理
+                        if (pStyle.StartsWith("Heading") || pStyle.StartsWith("見出し"))
+                        {
+                            int level = 1;
+                            string digits = new string(pStyle.Where(char.IsDigit).ToArray());
+                            if (!string.IsNullOrEmpty(digits))
+                            {
+                                level = int.Parse(digits.Substring(0, 1));
+                            }
+                            markdown.AppendLine($"{new string('#', Math.Min(level, 6))} {text}");
+                            markdown.AppendLine();
+                        }
+                        // 番号付きリスト
+                        else if (numPr != null)
+                        {
+                            var ilvl = numPr.Element(w + "ilvl")?.Attribute(w + "val")?.Value;
+                            int indent = 0;
+                            if (ilvl != null) int.TryParse(ilvl, out indent);
+                            string prefix = new string(' ', indent * 2);
+                            markdown.AppendLine($"{prefix}- {text}");
+                            inList = true;
+                        }
+                        else
+                        {
+                            if (inList)
+                            {
+                                markdown.AppendLine();
+                                inList = false;
+                            }
+                            markdown.AppendLine(text);
+                            markdown.AppendLine();
+                        }
+                    }
+
+                    // テーブルの処理
+                    var tables = doc.Descendants(w + "tbl");
+                    foreach (var table in tables)
+                    {
+                        markdown.AppendLine();
+                        markdown.AppendLine(ConvertTableToMarkdown(table, w));
+                        markdown.AppendLine();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                markdown.AppendLine($"> 変換中にエラーが発生しました: {ex.Message}");
+            }
+            finally
+            {
+                // 一時フォルダを削除
+                if (tempDir != null && Directory.Exists(tempDir))
+                {
+                    try { Directory.Delete(tempDir, true); } catch { }
+                }
+            }
+
+            return markdown.ToString();
+        }
+
+        private void ExtractDocx(string zipPath, string extractPath)
+        {
+            // .NET Framework 4.5以降のZipFileを使わずにShellを使用して展開
+            // またはバイナリレベルでZIPを解析
+
+            // まず、ファイルを.zip拡張子でコピー
+            string tempZip = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".zip");
+            File.Copy(zipPath, tempZip, true);
+
+            try
+            {
+                // Shell32を使用してZIPを展開
+                Type shellType = Type.GetTypeFromProgID("Shell.Application");
+                dynamic shell = Activator.CreateInstance(shellType);
+
+                dynamic zipFolder = shell.NameSpace(tempZip);
+                dynamic destFolder = shell.NameSpace(extractPath);
+
+                if (zipFolder != null && destFolder != null)
+                {
+                    destFolder.CopyHere(zipFolder.Items(), 4 | 16); // 4=確認なし, 16=すべて上書き
+                    
+                    // コピー完了を待つ
+                    System.Threading.Thread.Sleep(500);
+                }
+
+                Marshal.ReleaseComObject(shell);
+            }
+            finally
+            {
+                // 一時ZIPファイルを削除
+                try { File.Delete(tempZip); } catch { }
+            }
+        }
+
+        private string ProcessFormattedText(XElement para, XNamespace w)
+        {
+            StringBuilder result = new StringBuilder();
+
+            foreach (var run in para.Descendants(w + "r"))
+            {
+                var rPr = run.Element(w + "rPr");
+                bool isBold = rPr?.Element(w + "b") != null;
+                bool isItalic = rPr?.Element(w + "i") != null;
+                bool isStrike = rPr?.Element(w + "strike") != null;
+
+                StringBuilder runText = new StringBuilder();
+                foreach (var child in run.Elements())
+                {
+                    if (child.Name == w + "t")
+                    {
+                        runText.Append(child.Value);
+                    }
+                    else if (child.Name == w + "tab")
+                    {
+                        runText.Append("\t");
+                    }
+                    else if (child.Name == w + "br")
+                    {
+                        runText.Append("\n");
+                    }
+                }
+
+                string text = runText.ToString();
+                if (string.IsNullOrEmpty(text)) continue;
+
+                if (isStrike)
+                {
+                    text = $"~~{text}~~";
+                }
+                if (isBold && isItalic)
+                {
+                    text = $"***{text}***";
+                }
+                else if (isBold)
+                {
+                    text = $"**{text}**";
+                }
+                else if (isItalic)
+                {
+                    text = $"*{text}*";
+                }
+
+                result.Append(text);
+            }
+
+            return result.ToString();
+        }
+
+        private string ConvertTableToMarkdown(XElement table, XNamespace w)
+        {
+            StringBuilder sb = new StringBuilder();
+            var rows = table.Elements(w + "tr").ToList();
+
+            if (rows.Count == 0) return "";
+
+            // ヘッダー行
+            var headerCells = rows[0].Elements(w + "tc").ToList();
+            sb.Append("|");
+            foreach (var cell in headerCells)
+            {
+                string cellText = GetCellText(cell, w);
+                sb.Append($" {cellText} |");
+            }
+            sb.AppendLine();
+
+            // 区切り行
+            sb.Append("|");
+            foreach (var cell in headerCells)
+            {
+                sb.Append(" --- |");
+            }
+            sb.AppendLine();
+
+            // データ行
+            for (int i = 1; i < rows.Count; i++)
+            {
+                var cells = rows[i].Elements(w + "tc").ToList();
+                sb.Append("|");
+                foreach (var cell in cells)
+                {
+                    string cellText = GetCellText(cell, w);
+                    sb.Append($" {cellText} |");
+                }
+                sb.AppendLine();
+            }
+
+            return sb.ToString();
+        }
+
+        private string GetCellText(XElement cell, XNamespace w)
+        {
+            StringBuilder text = new StringBuilder();
+            foreach (var t in cell.Descendants(w + "t"))
+            {
+                text.Append(t.Value);
+            }
+            return text.ToString().Trim().Replace("|", "\\|");
+        }
+
+        private string ConvertDocToMarkdown(string filePath)
+        {
+            StringBuilder markdown = new StringBuilder();
+            markdown.AppendLine($"# {Path.GetFileNameWithoutExtension(filePath)}");
+            markdown.AppendLine();
+
+            try
+            {
+                // .doc は COM で Word を使って本文を取得（文字化けを大幅に減らす）
+                string content = ExtractTextFromDocWithWord(filePath);
+                content = NormalizeDocExtractedText(content);
+
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    markdown.AppendLine("> この .doc からテキストを抽出できませんでした。");
+                    markdown.AppendLine("> 対策: Wordで .docx に変換してから再変換してください。");
+                    return markdown.ToString();
+                }
+
+                // 抽出結果が大きい場合は保存時に分割されるので、ここでは全文を返す
+                markdown.AppendLine(content);
+            }
+            catch (COMException)
+            {
+                markdown.AppendLine("> .doc の抽出には Microsoft Word が必要です（COMオートメーション）。");
+                markdown.AppendLine("> 対策: Wordで .docx に変換してから再変換してください。");
+            }
+            catch (Exception ex)
+            {
+                markdown.AppendLine($"> テキスト抽出エラー: {ex.Message}");
+            }
+
+            return markdown.ToString();
+        }
+
+        private string ExtractTextFromDocWithWord(string filePath)
+        {
+            Type wordType = Type.GetTypeFromProgID("Word.Application");
+            if (wordType == null)
+            {
+                throw new COMException("Word.Application が見つかりません。");
+            }
+
+            dynamic wordApp = null;
+            dynamic doc = null;
+            try
+            {
+                wordApp = Activator.CreateInstance(wordType);
+                wordApp.Visible = false;
+                wordApp.DisplayAlerts = 0; // wdAlertsNone
+
+                // ReadOnly / Visible=false
+                doc = wordApp.Documents.Open(filePath, ReadOnly: true, Visible: false);
+
+                // 本文
+                string text = doc.Content.Text as string;
+                return text ?? string.Empty;
+            }
+            finally
+            {
+                try
+                {
+                    if (doc != null)
+                    {
+                        doc.Close(false);
+                        Marshal.FinalReleaseComObject(doc);
+                    }
+                }
+                catch { }
+
+                try
+                {
+                    if (wordApp != null)
+                    {
+                        wordApp.Quit(false);
+                        Marshal.FinalReleaseComObject(wordApp);
+                    }
+                }
+                catch { }
+            }
+        }
+
+        private string ConvertPdfToMarkdown(string filePath)
+        {
+            StringBuilder markdown = new StringBuilder();
+            markdown.AppendLine($"# {Path.GetFileNameWithoutExtension(filePath)}");
+            markdown.AppendLine();
+
+            try
+            {
+#if PDFPIG
+                AppendLog("[PDF] PdfPigで抽出します");
+                string pdfText = ExtractTextFromPdfWithPdfPig(filePath);
+
+                // PdfPigの抽出結果がPDFの生データ(構造)っぽい場合は、抽出失敗として扱う
+                // （endstream/endobjが大量に出るのは本文ではない）
+                if (!string.IsNullOrWhiteSpace(pdfText) &&
+                    (pdfText.Contains("endstream") || pdfText.Contains("endobj") || pdfText.Contains("xref") || pdfText.Contains("%%EOF")))
+                {
+                    AppendLog("[PDF] PdfPig抽出結果がPDF構造っぽいため、抽出失敗として扱います");
+                    pdfText = null;
+                }
+#else
+                AppendLog("[PDF] 簡易抽出で抽出します（文字化けする可能性があります）");
+                byte[] pdfBytes = File.ReadAllBytes(filePath);
+                string pdfText = ExtractTextFromPdf(pdfBytes);
+#endif
+
+                if (string.IsNullOrWhiteSpace(pdfText))
+                {
+                    markdown.AppendLine("> このPDFからテキストを抽出できませんでした。");
+                    markdown.AppendLine("> （フォント埋め込み/ToUnicode未設定等により抽出不可の場合があります）");
+                    markdown.AppendLine("> 回避策: PDFを『テキストとしてコピーできる形式』で再出力する、または別のPDF抽出ライブラリを検討してください。");
+                }
+                else
+                {
+                    string[] lines = pdfText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+                    foreach (string line in lines)
+                    {
+                        string trimmedLine = line.TrimEnd();
+                        if (!string.IsNullOrWhiteSpace(trimmedLine))
+                        {
+                            markdown.AppendLine(trimmedLine);
+                        }
+                        else
+                        {
+                            markdown.AppendLine();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                markdown.AppendLine($"> PDF読み取りエラー: {ex.Message}");
+                AppendLog($"[PDF] 例外: {ex.GetType().Name}: {ex.Message}");
+            }
+
+            return markdown.ToString();
+        }
+
+#if PDFPIG
+        private string ExtractTextFromPdfWithPdfPig(string filePath)
+        {
+            StringBuilder sb = new StringBuilder();
+
+            using (PdfDocument document = PdfDocument.Open(filePath))
+            {
+                foreach (Page page in document.GetPages())
+                {
+                    // page.Text が最もシンプルな抽出。必要なら後でレイアウト改善。
+                    sb.AppendLine(page.Text);
+                    sb.AppendLine();
+                }
+            }
+
+            return sb.ToString();
+        }
+#endif
+
+#if !PDFPIG
+        // PdfPig未導入の場合の簡易PDF抽出（日本語PDFでは文字化けする可能性が高い）
+        private string ExtractTextFromPdf(byte[] pdfBytes)
+        {
+            StringBuilder text = new StringBuilder();
+            string content = Encoding.GetEncoding("ISO-8859-1").GetString(pdfBytes);
+
+            var matches = Regex.Matches(content, @"BT\s*(.*?)\s*ET", RegexOptions.Singleline);
+
+            foreach (Match match in matches)
+            {
+                string block = match.Groups[1].Value;
+
+                var tjMatches = Regex.Matches(block, @"\((.*?)\)\s*Tj", RegexOptions.Singleline);
+                foreach (Match tj in tjMatches)
+                {
+                    string extracted = DecodePdfTextString(tj.Groups[1].Value);
+                    if (!string.IsNullOrWhiteSpace(extracted))
+                    {
+                        text.Append(extracted);
+                    }
+                }
+
+                var tjHexMatches = Regex.Matches(block, @"<([0-9A-Fa-f\s]+)>\s*Tj", RegexOptions.Singleline);
+                foreach (Match tjHex in tjHexMatches)
+                {
+                    string extracted = DecodePdfHexString(tjHex.Groups[1].Value);
+                    if (!string.IsNullOrWhiteSpace(extracted))
+                    {
+                        text.Append(extracted);
+                    }
+                }
+
+                var tjArrayMatches = Regex.Matches(block, @"\[(.*?)\]\s*TJ", RegexOptions.Singleline);
+                foreach (Match tjArray in tjArrayMatches)
+                {
+                    string arrayBody = tjArray.Groups[1].Value;
+
+                    var stringMatches = Regex.Matches(arrayBody, @"\((.*?)\)", RegexOptions.Singleline);
+                    foreach (Match str in stringMatches)
+                    {
+                        string extracted = DecodePdfTextString(str.Groups[1].Value);
+                        if (!string.IsNullOrWhiteSpace(extracted))
+                        {
+                            text.Append(extracted);
+                        }
+                    }
+
+                    var hexMatches = Regex.Matches(arrayBody, @"<([0-9A-Fa-f\s]+)>", RegexOptions.Singleline);
+                    foreach (Match hex in hexMatches)
+                    {
+                        string extracted = DecodePdfHexString(hex.Groups[1].Value);
+                        if (!string.IsNullOrWhiteSpace(extracted))
+                        {
+                            text.Append(extracted);
+                        }
+                    }
+                }
+
+                if (Regex.IsMatch(block, @"\d+\s+\d+\s+T[dD]"))
+                {
+                    text.AppendLine();
+                }
+            }
+
+            return CleanExtractedTextLocal(text.ToString());
+        }
+#endif
+
+        private string DecodePdfTextString(string input)
+        {
+            StringBuilder result = new StringBuilder();
+
+            for (int i = 0; i < input.Length; i++)
+            {
+                char c = input[i];
+
+                if (c == '\\' && i + 1 < input.Length)
+                {
+                    char next = input[i + 1];
+                    switch (next)
+                    {
+                        case 'n': result.Append('\n'); i++; break;
+                        case 'r': result.Append('\r'); i++; break;
+                        case 't': result.Append('\t'); i++; break;
+                        case 'b': result.Append('\b'); i++; break;
+                        case 'f': result.Append('\f'); i++; break;
+                        case '\\':
+                        case '(':
+                        case ')':
+                            result.Append(next); i++; break;
+                        default:
+                            if (next >= '0' && next <= '7')
+                            {
+                                string octal = "";
+                                int j = i + 1;
+                                while (j < input.Length && j < i + 4)
+                                {
+                                    char d = input[j];
+                                    if (d < '0' || d > '7') break;
+                                    octal += d;
+                                    j++;
+                                }
+
+                                if (octal.Length > 0)
+                                {
+                                    result.Append((char)Convert.ToInt32(octal, 8));
+                                    i = j - 1;
+                                }
+                            }
+                            break;
+                    }
+                }
+                else
+                {
+                    result.Append(c);
+                }
+            }
+
+            return result.ToString();
+        }
+
+        private string DecodePdfHexString(string hex)
+        {
+            string normalized = Regex.Replace(hex, @"\s+", "");
+            if (normalized.Length == 0) return "";
+
+            if (normalized.Length % 2 == 1)
+            {
+                normalized += "0";
+            }
+
+            byte[] bytes = new byte[normalized.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = Convert.ToByte(normalized.Substring(i * 2, 2), 16);
+            }
+
+            if (bytes.Length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+            {
+                return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
+            }
+            if (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+            {
+                return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);
+            }
+            if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            {
+                return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+            }
+
+            return Encoding.GetEncoding("ISO-8859-1").GetString(bytes);
+        }
+
+        private Encoding DetectEncoding(string filePath)
+        {
+            byte[] bom = new byte[4];
+            using (FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+            {
+                fs.Read(bom, 0, Math.Min(4, (int)fs.Length));
+            }
+
+            if (bom[0] == 0xef && bom[1] == 0xbb && bom[2] == 0xbf)
+                return Encoding.UTF8;
+            if (bom[0] == 0xff && bom[1] == 0xfe)
+                return Encoding.Unicode;
+            if (bom[0] == 0xfe && bom[1] == 0xff)
+                return Encoding.BigEndianUnicode;
+            if (bom[0] == 0xff && bom[1] == 0xfe && bom[2] == 0 && bom[3] == 0)
+                return Encoding.UTF32;
+
+            try
+            {
+                return Encoding.GetEncoding("shift_jis");
+            }
+            catch
+            {
+                return Encoding.UTF8;
+            }
+        }
+
+        private void UpdateStatus(string message)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => lblStatus.Text = message));
+            }
+            else
+            {
+                lblStatus.Text = message;
+            }
+        }
+
+        private void UpdateProgress(int value)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => progressBar.Value = value));
+            }
+            else
+            {
+                progressBar.Value = value;
+            }
+        }
+
+        private void AppendLog(string message)
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() =>
+                {
+                    txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+                }));
+            }
+            else
+            {
+                txtLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
+            }
+        }
+
+        private void SaveMarkdownWithSplitting(string outputFolder, string baseFileName, string markdown)
+        {
+            // 目安: 200KB を超えるとビューアによっては重くなりやすい
+            const int chunkChars = 200_000;
+
+            // 分割不要なら従来どおり
+            if (string.IsNullOrEmpty(markdown) || markdown.Length <= chunkChars)
+            {
+                string outputPath = Path.Combine(outputFolder, baseFileName + ".md");
+                File.WriteAllText(outputPath, markdown ?? string.Empty, Encoding.UTF8);
+                return;
+            }
+
+            // 分割ファイルを格納するサブフォルダ
+            string partsDir = Path.Combine(outputFolder, baseFileName + "_parts");
+            Directory.CreateDirectory(partsDir);
+
+            // 目次(親)Markdown
+            var index = new StringBuilder();
+            index.AppendLine($"# {baseFileName}");
+            index.AppendLine();
+            index.AppendLine("> 大きなファイルのため、複数のMarkdownに分割して出力しました。");
+            index.AppendLine();
+
+            int partNo = 1;
+            int pos = 0;
+            while (pos < markdown.Length)
+            {
+                int len = Math.Min(chunkChars, markdown.Length - pos);
+
+                // なるべく改行境界で切る
+                if (pos + len < markdown.Length)
+                {
+                    int lastNewLine = markdown.LastIndexOf('\n', pos + len - 1, len);
+                    if (lastNewLine > pos + 1000) // 近すぎる切断は避ける
+                    {
+                        len = (lastNewLine - pos) + 1;
+                    }
+                }
+
+                string partText = markdown.Substring(pos, len);
+                string partFileName = $"{baseFileName}_part{partNo:000}.md";
+                string partPath = Path.Combine(partsDir, partFileName);
+                File.WriteAllText(partPath, partText, Encoding.UTF8);
+
+                index.AppendLine($"- [{baseFileName} Part {partNo}]({baseFileName}_parts/{partFileName})");
+
+                pos += len;
+                partNo++;
+
+                // 念のため上限
+                if (partNo > 9999) break;
+            }
+
+            string indexPath = Path.Combine(outputFolder, baseFileName + ".md");
+            File.WriteAllText(indexPath, index.ToString(), Encoding.UTF8);
+        }
+
+        private bool IsJapaneseChar(char c)
+        {
+            return (c >= 0x3040 && c <= 0x309F) || // ひらがな
+                   (c >= 0x30A0 && c <= 0x30FF) || // カタカナ
+                   (c >= 0x4E00 && c <= 0x9FFF) || // CJK統合漢字
+                   (c >= 0xFF00 && c <= 0xFFEF);   // 全角記号
+        }
+
+        private string NormalizeDocExtractedText(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            // 制御文字/NULL を落とす（改行とタブは残す）
+            text = Regex.Replace(text, "[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]", "");
+
+            // サロゲート/不可視系(ゼロ幅等)を落とす
+            text = Regex.Replace(text, "[\\uD800-\\uDFFF\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u206F\\uFEFF]", "");
+
+            // 連続スペース整理
+            text = Regex.Replace(text, @"[ \t]+", " ");
+
+            // 異常に長いトークン(空白なし)を分割
+            text = BreakLongTokens(text, 300);
+
+            // 空行の正規化
+            text = Regex.Replace(text, @"\r\n", "\n");
+            text = Regex.Replace(text, @"\n{3,}", "\n\n");
+
+            return text.Trim();
+        }
+
+        private string BreakLongTokens(string text, int maxTokenLength)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            var sb = new StringBuilder(text.Length);
+            int tokenLen = 0;
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                char c = text[i];
+
+                if (c == '\r' || c == '\n' || c == ' ' || c == '\t')
+                {
+                    sb.Append(c);
+                    tokenLen = 0;
+                    continue;
+                }
+
+                sb.Append(c);
+                tokenLen++;
+
+                if (tokenLen >= maxTokenLength)
+                {
+                    sb.Append('\n');
+                    tokenLen = 0;
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        private string CleanExtractedTextLocal(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            text = Regex.Replace(text, @"[ \t]+", " ");
+            text = Regex.Replace(text, @"\r\n", "\n");
+            text = Regex.Replace(text, @"\n{3,}", "\n\n");
+            text = Regex.Replace(text, @"[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F]+", "");
+            return text.Trim();
+        }
+    }
+}

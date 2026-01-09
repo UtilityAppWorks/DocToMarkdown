@@ -1,0 +1,268 @@
+﻿namespace DocToMarkdown
+{
+    partial class Form1
+    {
+        /// <summary>
+        /// 必要なデザイナー変数です。
+        /// </summary>
+        private System.ComponentModel.IContainer components = null;
+
+        /// <summary>
+        /// 使用中のリソースをすべてクリーンアップします。
+        /// </summary>
+        /// <param name="disposing">マネージド リソースを破棄する場合は true を指定し、その他の場合は false を指定します。</param>
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && (components != null))
+            {
+                components.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+
+        #region Windows フォーム デザイナーで生成されたコード
+
+        /// <summary>
+        /// デザイナー サポートに必要なメソッドです。このメソッドの内容を
+        /// コード エディターで変更しないでください。
+        /// </summary>
+        private void InitializeComponent()
+        {
+            this.lblInputFiles = new System.Windows.Forms.Label();
+            this.txtInputFiles = new System.Windows.Forms.TextBox();
+            this.btnSelectFiles = new System.Windows.Forms.Button();
+            this.lblOutputFolder = new System.Windows.Forms.Label();
+            this.txtOutputFolder = new System.Windows.Forms.TextBox();
+            this.btnSelectOutputFolder = new System.Windows.Forms.Button();
+            this.btnConvert = new System.Windows.Forms.Button();
+            this.progressBar = new System.Windows.Forms.ProgressBar();
+            this.lblStatus = new System.Windows.Forms.Label();
+            this.listBoxFiles = new System.Windows.Forms.ListBox();
+            this.lblFileList = new System.Windows.Forms.Label();
+            this.btnClearFiles = new System.Windows.Forms.Button();
+            this.txtLog = new System.Windows.Forms.TextBox();
+            this.lblLog = new System.Windows.Forms.Label();
+            this.progressMarquee = new System.Windows.Forms.ProgressBar();
+            this.SuspendLayout();
+            // 
+            // lblInputFiles
+            // 
+            this.lblInputFiles.AutoSize = true;
+            this.lblInputFiles.Location = new System.Drawing.Point(16, 19);
+            this.lblInputFiles.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.lblInputFiles.Name = "lblInputFiles";
+            this.lblInputFiles.Size = new System.Drawing.Size(82, 15);
+            this.lblInputFiles.TabIndex = 0;
+            this.lblInputFiles.Text = "入力ファイル:";
+            // 
+            // txtInputFiles
+            // 
+            this.txtInputFiles.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtInputFiles.Location = new System.Drawing.Point(127, 15);
+            this.txtInputFiles.Margin = new System.Windows.Forms.Padding(4);
+            this.txtInputFiles.Name = "txtInputFiles";
+            this.txtInputFiles.ReadOnly = true;
+            this.txtInputFiles.Size = new System.Drawing.Size(709, 28);
+            this.txtInputFiles.TabIndex = 1;
+            // 
+            // btnSelectFiles
+            // 
+            this.btnSelectFiles.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnSelectFiles.Location = new System.Drawing.Point(879, 15);
+            this.btnSelectFiles.Margin = new System.Windows.Forms.Padding(4);
+            this.btnSelectFiles.Name = "btnSelectFiles";
+            this.btnSelectFiles.Size = new System.Drawing.Size(117, 29);
+            this.btnSelectFiles.TabIndex = 2;
+            this.btnSelectFiles.Text = "ファイル選択...";
+            this.btnSelectFiles.UseVisualStyleBackColor = true;
+            this.btnSelectFiles.Click += new System.EventHandler(this.btnSelectFiles_Click);
+            // 
+            // lblOutputFolder
+            // 
+            this.lblOutputFolder.AutoSize = true;
+            this.lblOutputFolder.Location = new System.Drawing.Point(16, 55);
+            this.lblOutputFolder.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.lblOutputFolder.Name = "lblOutputFolder";
+            this.lblOutputFolder.Size = new System.Drawing.Size(83, 15);
+            this.lblOutputFolder.TabIndex = 3;
+            this.lblOutputFolder.Text = "出力フォルダ:";
+            // 
+            // txtOutputFolder
+            // 
+            this.txtOutputFolder.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtOutputFolder.Location = new System.Drawing.Point(127, 51);
+            this.txtOutputFolder.Margin = new System.Windows.Forms.Padding(4);
+            this.txtOutputFolder.Name = "txtOutputFolder";
+            this.txtOutputFolder.ReadOnly = true;
+            this.txtOutputFolder.Size = new System.Drawing.Size(709, 28);
+            this.txtOutputFolder.TabIndex = 4;
+            // 
+            // btnSelectOutputFolder
+            // 
+            this.btnSelectOutputFolder.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnSelectOutputFolder.Location = new System.Drawing.Point(879, 61);
+            this.btnSelectOutputFolder.Margin = new System.Windows.Forms.Padding(4);
+            this.btnSelectOutputFolder.Name = "btnSelectOutputFolder";
+            this.btnSelectOutputFolder.Size = new System.Drawing.Size(117, 29);
+            this.btnSelectOutputFolder.TabIndex = 5;
+            this.btnSelectOutputFolder.Text = "フォルダ選択...";
+            this.btnSelectOutputFolder.UseVisualStyleBackColor = true;
+            this.btnSelectOutputFolder.Click += new System.EventHandler(this.btnSelectOutputFolder_Click);
+            // 
+            // btnConvert
+            // 
+            this.btnConvert.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnConvert.Font = new System.Drawing.Font("MS UI Gothic", 9F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(128)));
+            this.btnConvert.Location = new System.Drawing.Point(879, 183);
+            this.btnConvert.Margin = new System.Windows.Forms.Padding(4);
+            this.btnConvert.Name = "btnConvert";
+            this.btnConvert.Size = new System.Drawing.Size(117, 44);
+            this.btnConvert.TabIndex = 9;
+            this.btnConvert.Text = "変換開始";
+            this.btnConvert.UseVisualStyleBackColor = true;
+            this.btnConvert.Click += new System.EventHandler(this.btnConvert_Click);
+            // 
+            // progressBar
+            // 
+            this.progressBar.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.progressBar.Location = new System.Drawing.Point(19, 242);
+            this.progressBar.Margin = new System.Windows.Forms.Padding(4);
+            this.progressBar.Name = "progressBar";
+            this.progressBar.Size = new System.Drawing.Size(1003, 36);
+            this.progressBar.TabIndex = 10;
+            // 
+            // lblStatus
+            // 
+            this.lblStatus.AutoSize = true;
+            this.lblStatus.Location = new System.Drawing.Point(16, 275);
+            this.lblStatus.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.lblStatus.Name = "lblStatus";
+            this.lblStatus.Size = new System.Drawing.Size(52, 15);
+            this.lblStatus.TabIndex = 11;
+            this.lblStatus.Text = "待機中";
+            // 
+            // listBoxFiles
+            // 
+            this.listBoxFiles.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.listBoxFiles.FormattingEnabled = true;
+            this.listBoxFiles.ItemHeight = 15;
+            this.listBoxFiles.Location = new System.Drawing.Point(19, 110);
+            this.listBoxFiles.Margin = new System.Windows.Forms.Padding(4);
+            this.listBoxFiles.Name = "listBoxFiles";
+            this.listBoxFiles.SelectionMode = System.Windows.Forms.SelectionMode.MultiExtended;
+            this.listBoxFiles.Size = new System.Drawing.Size(844, 109);
+            this.listBoxFiles.TabIndex = 7;
+            // 
+            // lblFileList
+            // 
+            this.lblFileList.AutoSize = true;
+            this.lblFileList.Location = new System.Drawing.Point(16, 91);
+            this.lblFileList.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.lblFileList.Name = "lblFileList";
+            this.lblFileList.Size = new System.Drawing.Size(112, 15);
+            this.lblFileList.TabIndex = 6;
+            this.lblFileList.Text = "選択ファイル一覧:";
+            // 
+            // btnClearFiles
+            // 
+            this.btnClearFiles.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btnClearFiles.Location = new System.Drawing.Point(879, 138);
+            this.btnClearFiles.Margin = new System.Windows.Forms.Padding(4);
+            this.btnClearFiles.Name = "btnClearFiles";
+            this.btnClearFiles.Size = new System.Drawing.Size(117, 29);
+            this.btnClearFiles.TabIndex = 8;
+            this.btnClearFiles.Text = "クリア";
+            this.btnClearFiles.UseVisualStyleBackColor = true;
+            this.btnClearFiles.Click += new System.EventHandler(this.btnClearFiles_Click);
+            // 
+            // txtLog
+            // 
+            this.txtLog.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
+            | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.txtLog.Location = new System.Drawing.Point(19, 319);
+            this.txtLog.Margin = new System.Windows.Forms.Padding(4);
+            this.txtLog.Multiline = true;
+            this.txtLog.Name = "txtLog";
+            this.txtLog.ReadOnly = true;
+            this.txtLog.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
+            this.txtLog.Size = new System.Drawing.Size(1000, 144);
+            this.txtLog.TabIndex = 13;
+            // 
+            // lblLog
+            // 
+            this.lblLog.AutoSize = true;
+            this.lblLog.Location = new System.Drawing.Point(16, 300);
+            this.lblLog.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            this.lblLog.Name = "lblLog";
+            this.lblLog.Size = new System.Drawing.Size(33, 15);
+            this.lblLog.TabIndex = 12;
+            this.lblLog.Text = "ログ:";
+            // 
+            // progressMarquee
+            // 
+            this.progressMarquee.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) 
+            | System.Windows.Forms.AnchorStyles.Right)));
+            this.progressMarquee.Location = new System.Drawing.Point(19, 220);
+            this.progressMarquee.Margin = new System.Windows.Forms.Padding(4);
+            this.progressMarquee.MarqueeAnimationSpeed = 30;
+            this.progressMarquee.Name = "progressMarquee";
+            this.progressMarquee.Size = new System.Drawing.Size(1003, 19);
+            this.progressMarquee.Style = System.Windows.Forms.ProgressBarStyle.Marquee;
+            this.progressMarquee.TabIndex = 14;
+            this.progressMarquee.Visible = false;
+            // 
+            // Form1
+            // 
+            this.AutoScaleDimensions = new System.Drawing.SizeF(8F, 15F);
+            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+            this.ClientSize = new System.Drawing.Size(1040, 520);
+            this.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.Controls.Add(this.txtLog);
+            this.Controls.Add(this.lblLog);
+            this.Controls.Add(this.lblStatus);
+            this.Controls.Add(this.progressBar);
+            this.Controls.Add(this.btnConvert);
+            this.Controls.Add(this.btnClearFiles);
+            this.Controls.Add(this.listBoxFiles);
+            this.Controls.Add(this.lblFileList);
+            this.Controls.Add(this.btnSelectOutputFolder);
+            this.Controls.Add(this.txtOutputFolder);
+            this.Controls.Add(this.lblOutputFolder);
+            this.Controls.Add(this.btnSelectFiles);
+            this.Controls.Add(this.txtInputFiles);
+            this.Controls.Add(this.lblInputFiles);
+            this.Controls.Add(this.progressMarquee);
+            this.Margin = new System.Windows.Forms.Padding(4);
+            this.MinimumSize = new System.Drawing.Size(900, 560);
+            this.Name = "Form1";
+            this.Text = "DocToMarkdown - ドキュメント変換ツール";
+            this.ResumeLayout(false);
+            this.PerformLayout();
+
+        }
+
+        #endregion
+
+        private System.Windows.Forms.Label lblInputFiles;
+        private System.Windows.Forms.TextBox txtInputFiles;
+        private System.Windows.Forms.Button btnSelectFiles;
+        private System.Windows.Forms.Label lblOutputFolder;
+        private System.Windows.Forms.TextBox txtOutputFolder;
+        private System.Windows.Forms.Button btnSelectOutputFolder;
+        private System.Windows.Forms.Button btnConvert;
+        private System.Windows.Forms.ProgressBar progressBar;
+        private System.Windows.Forms.Label lblStatus;
+        private System.Windows.Forms.ListBox listBoxFiles;
+        private System.Windows.Forms.Label lblFileList;
+        private System.Windows.Forms.Button btnClearFiles;
+        private System.Windows.Forms.TextBox txtLog;
+        private System.Windows.Forms.Label lblLog;
+        private System.Windows.Forms.ProgressBar progressMarquee;
+    }
+}
+
