@@ -26,3 +26,8 @@ bld/
 
 # User-specific files
 *.rsuser
+
+# NuGet
+.nuget/
+packages/
+*.nupkg
