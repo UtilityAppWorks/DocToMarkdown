@@ -360,11 +360,9 @@ namespace DocToMarkdown
             markdown.AppendLine($"# {Path.GetFileNameWithoutExtension(filePath)}");
             markdown.AppendLine();
 
-            string[] lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-            foreach (string line in lines)
-            {
-                markdown.AppendLine(line);
-            }
+            // Apply structure inference to plain text
+            string structuredContent = InferStructureFromPlainText(content);
+            markdown.AppendLine(structuredContent);
 
             return markdown.ToString();
         }
@@ -633,7 +631,9 @@ namespace DocToMarkdown
                     return markdown.ToString();
                 }
 
-                markdown.AppendLine(content);
+                // Apply structure inference to improve markdown structure
+                string structuredContent = InferStructureFromPlainText(content);
+                markdown.AppendLine(structuredContent);
             }
             catch (COMException)
             {
@@ -732,19 +732,9 @@ namespace DocToMarkdown
                     // PDFの可読性向上のために行分割（疑似改行）
                     pdfText = ImprovePdfReadabilityByInsertingLineBreaks(pdfText);
 
-                    string[] lines = pdfText.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-                    foreach (string line in lines)
-                    {
-                        string trimmedLine = line.TrimEnd();
-                        if (!string.IsNullOrWhiteSpace(trimmedLine))
-                        {
-                            markdown.AppendLine(trimmedLine);
-                        }
-                        else
-                        {
-                            markdown.AppendLine();
-                        }
-                    }
+                    // Apply structure inference to improve markdown structure
+                    string structuredText = InferStructureFromPlainText(pdfText);
+                    markdown.AppendLine(structuredText);
                 }
             }
             catch (Exception ex)
@@ -1650,6 +1640,479 @@ namespace DocToMarkdown
             v = v.Replace("|", "\\|");
             v = v.Replace("\n", "<br>");
             return v.Trim();
+        }
+
+        /// <summary>
+        /// オフライン環境で動作する構造推論エンジン。
+        /// 平文テキストから見出し、リスト、コードブロック、テーブルを検出してMarkdown構造を生成します。
+        /// </summary>
+        private string InferStructureFromPlainText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+
+            var lines = text.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            var result = new StringBuilder(text.Length + text.Length / 4);
+            
+            int i = 0;
+            while (i < lines.Length)
+            {
+                string line = lines[i];
+                
+                // Check for code blocks (3+ lines of indented content or specific patterns)
+                if (IsCodeBlockStart(lines, i, out int codeBlockEnd))
+                {
+                    result.AppendLine("```");
+                    for (int j = i; j < codeBlockEnd; j++)
+                    {
+                        result.AppendLine(lines[j].TrimStart());
+                    }
+                    result.AppendLine("```");
+                    result.AppendLine();
+                    i = codeBlockEnd;
+                    continue;
+                }
+
+                // Check for tables (aligned columns with consistent delimiters)
+                if (IsTableStart(lines, i, out int tableEnd))
+                {
+                    var tableLines = new List<string>();
+                    for (int j = i; j < tableEnd; j++)
+                    {
+                        tableLines.Add(lines[j]);
+                    }
+                    result.AppendLine(ConvertPlainTextTableToMarkdown(tableLines));
+                    result.AppendLine();
+                    i = tableEnd;
+                    continue;
+                }
+
+                // Check for headings
+                if (IsHeadingLine(line, i > 0 ? lines[i - 1] : null, i + 1 < lines.Length ? lines[i + 1] : null))
+                {
+                    int level = DetermineHeadingLevel(line);
+                    string headingText = line.Trim();
+                    
+                    // Remove common heading prefixes
+                    headingText = Regex.Replace(headingText, @"^(?:第?[0-9０-９]+[章節項]\.?\s*|[0-9]+\.\s*|[■□◆◇●○▲△▼▽]+ *)", "");
+                    
+                    result.AppendLine($"{new string('#', level)} {headingText}");
+                    result.AppendLine();
+                    i++;
+                    continue;
+                }
+
+                // Check for list items
+                if (IsListItem(line, out string listMarker, out string listContent))
+                {
+                    int indent = GetIndentLevel(line);
+                    string prefix = new string(' ', indent * 2);
+                    result.AppendLine($"{prefix}- {listContent}");
+                    i++;
+                    continue;
+                }
+
+                // Regular paragraph
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    result.AppendLine(line.TrimEnd());
+                }
+                else
+                {
+                    result.AppendLine();
+                }
+                i++;
+            }
+
+            return result.ToString();
+        }
+
+        /// <summary>
+        /// 見出し行かどうかを判定（オフライン・ヒューリスティック）
+        /// </summary>
+        private bool IsHeadingLine(string line, string prevLine, string nextLine)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return false;
+            
+            string trimmed = line.Trim();
+            int visualWidth = GetVisualWidth(trimmed);
+
+            // Too long to be a heading
+            if (visualWidth > 50) return false;
+
+            // Empty lines around it suggest heading
+            bool prevEmpty = string.IsNullOrWhiteSpace(prevLine);
+            bool nextEmpty = string.IsNullOrWhiteSpace(nextLine);
+
+            // Pattern-based heading detection
+            // 1. Numbered sections: "1. Introduction", "第1章", "1.1 Overview"
+            if (Regex.IsMatch(trimmed, @"^(?:第?[0-9０-９]+[章節項]\.?\s+|[0-9]+(?:\.[0-9]+)*\.?\s+)[^\n]{1,40}$"))
+                return true;
+
+            // 2. Heading markers: "■ Title", "【Title】", "[Title]"
+            if (Regex.IsMatch(trimmed, @"^[■□◆◇●○▲△▼▽]+\s+.+$"))
+                return true;
+            if (Regex.IsMatch(trimmed, @"^[【〔\[][^\]】〕]+[\]】〕]$"))
+                return true;
+
+            // 3. Short line with colon or dash at end
+            if (visualWidth >= 4 && visualWidth <= 40)
+            {
+                if (Regex.IsMatch(trimmed, @"[:：]\s*$") && (prevEmpty || nextEmpty))
+                    return true;
+                if (Regex.IsMatch(trimmed, @"\s+-\s*$") && (prevEmpty || nextEmpty))
+                    return true;
+            }
+
+            // 4. ALL CAPS short lines (English headings)
+            if (Regex.IsMatch(trimmed, @"^[A-Z][A-Z\s]{2,39}$") && (prevEmpty || nextEmpty))
+                return true;
+
+            // 5. Title Case (multiple capitalized words)
+            if (visualWidth >= 10 && visualWidth <= 45 && 
+                Regex.IsMatch(trimmed, @"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,6}$") && 
+                (prevEmpty || nextEmpty))
+                return true;
+
+            // 6. Short lines without sentence-ending punctuation
+            if (visualWidth >= 4 && visualWidth <= 35 && 
+                !trimmed.Contains("。") && !trimmed.Contains(".") && 
+                !trimmed.Contains("、") && !trimmed.Contains(",") &&
+                (prevEmpty || nextEmpty))
+                return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// 見出しレベルを判定（1-6）
+        /// </summary>
+        private int DetermineHeadingLevel(string line)
+        {
+            string trimmed = line.Trim();
+
+            // Numbered hierarchy: "1." = level 2, "1.1" = level 3, "1.1.1" = level 4
+            var match = Regex.Match(trimmed, @"^([0-9]+(?:\.[0-9]+)*)");
+            if (match.Success)
+            {
+                int dots = match.Groups[1].Value.Count(c => c == '.');
+                return Math.Min(dots + 2, 6);
+            }
+
+            // Chapter markers
+            if (Regex.IsMatch(trimmed, @"^第?[0-9０-９]+章"))
+                return 2;
+            if (Regex.IsMatch(trimmed, @"^第?[0-9０-９]+節"))
+                return 3;
+            if (Regex.IsMatch(trimmed, @"^第?[0-9０-９]+項"))
+                return 4;
+
+            // Marker symbols
+            if (trimmed.StartsWith("■"))
+                return 2;
+            if (trimmed.StartsWith("□"))
+                return 3;
+            if (trimmed.StartsWith("◆") || trimmed.StartsWith("●"))
+                return 3;
+
+            // Default to level 2 for detected headings
+            return 2;
+        }
+
+        /// <summary>
+        /// リスト項目かどうかを判定
+        /// </summary>
+        private bool IsListItem(string line, out string marker, out string content)
+        {
+            marker = null;
+            content = null;
+
+            if (string.IsNullOrWhiteSpace(line)) return false;
+
+            string trimmed = line.TrimStart();
+
+            // Bullet points: "- item", "* item", "• item", "・ item"
+            var bulletMatch = Regex.Match(trimmed, @"^([-*•・◦▪▫])\s+(.+)$");
+            if (bulletMatch.Success)
+            {
+                marker = bulletMatch.Groups[1].Value;
+                content = bulletMatch.Groups[2].Value.Trim();
+                return true;
+            }
+
+            // Numbered lists: "1. item", "1) item", "(1) item"
+            var numberedMatch = Regex.Match(trimmed, @"^(?:[0-9]+\.|[0-9]+\)|\([0-9]+\))\s+(.+)$");
+            if (numberedMatch.Success)
+            {
+                content = numberedMatch.Groups[1].Value.Trim();
+                return true;
+            }
+
+            // Alphabetic lists: "a. item", "A) item"
+            var alphaMatch = Regex.Match(trimmed, @"^(?:[a-zA-Z]\.|[a-zA-Z]\))\s+(.+)$");
+            if (alphaMatch.Success)
+            {
+                content = alphaMatch.Groups[1].Value.Trim();
+                return true;
+            }
+
+            // Japanese circled numbers: ① ② ③
+            var circledMatch = Regex.Match(trimmed, @"^[①-⑳]\s+(.+)$");
+            if (circledMatch.Success)
+            {
+                content = circledMatch.Groups[1].Value.Trim();
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// インデントレベルを取得
+        /// </summary>
+        private int GetIndentLevel(string line)
+        {
+            if (string.IsNullOrEmpty(line)) return 0;
+            
+            int spaces = 0;
+            for (int i = 0; i < line.Length; i++)
+            {
+                if (line[i] == ' ') spaces++;
+                else if (line[i] == '\t') spaces += 4;
+                else break;
+            }
+            
+            return spaces / 4;
+        }
+
+        /// <summary>
+        /// コードブロックの開始を検出
+        /// </summary>
+        private bool IsCodeBlockStart(string[] lines, int startIndex, out int endIndex)
+        {
+            endIndex = startIndex;
+
+            // Need at least 3 consecutive indented lines
+            if (startIndex + 2 >= lines.Length) return false;
+
+            string line = lines[startIndex];
+            if (string.IsNullOrWhiteSpace(line)) return false;
+
+            // Check if line starts with significant indentation (4+ spaces or tab)
+            int indent = 0;
+            for (int i = 0; i < line.Length && (line[i] == ' ' || line[i] == '\t'); i++)
+            {
+                indent += line[i] == '\t' ? 4 : 1;
+            }
+
+            if (indent < 4) return false;
+
+            // Check for code-like patterns in the line
+            string trimmed = line.Trim();
+            bool hasCodePattern = 
+                Regex.IsMatch(trimmed, @"^(?:public|private|protected|class|function|def|var|const|let|if|for|while|import|package|using)\s") ||
+                Regex.IsMatch(trimmed, @"[{};()]") ||
+                Regex.IsMatch(trimmed, @"^[a-zA-Z_][a-zA-Z0-9_]*\s*[=\(]") ||
+                Regex.IsMatch(trimmed, @"^\s*//|^\s*/\*|^\s*#");
+
+            if (!hasCodePattern) return false;
+
+            // Count consecutive indented lines with similar indent
+            int count = 1;
+            for (int i = startIndex + 1; i < lines.Length; i++)
+            {
+                string nextLine = lines[i];
+                
+                // Empty lines are OK within code blocks
+                if (string.IsNullOrWhiteSpace(nextLine))
+                {
+                    count++;
+                    continue;
+                }
+
+                // Check if still indented
+                int nextIndent = 0;
+                for (int j = 0; j < nextLine.Length && (nextLine[j] == ' ' || nextLine[j] == '\t'); j++)
+                {
+                    nextIndent += nextLine[j] == '\t' ? 4 : 1;
+                }
+
+                if (nextIndent >= 2)
+                {
+                    count++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if (count >= 3)
+            {
+                endIndex = startIndex + count;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// テーブルの開始を検出
+        /// </summary>
+        private bool IsTableStart(string[] lines, int startIndex, out int endIndex)
+        {
+            endIndex = startIndex;
+
+            // Need at least 2 rows
+            if (startIndex + 1 >= lines.Length) return false;
+
+            string line = lines[startIndex];
+            if (string.IsNullOrWhiteSpace(line)) return false;
+
+            // Check for common delimiters: |, tab, or multiple spaces
+            int delimiterCount = 0;
+            if (line.Contains("|"))
+            {
+                delimiterCount = line.Count(c => c == '|');
+            }
+            else if (line.Contains("\t"))
+            {
+                delimiterCount = line.Count(c => c == '\t');
+            }
+            else if (Regex.IsMatch(line, @"\s{2,}"))
+            {
+                delimiterCount = Regex.Matches(line, @"\s{2,}").Count;
+            }
+
+            if (delimiterCount < 1) return false;
+
+            // Check if next lines have similar structure
+            int rowCount = 1;
+            for (int i = startIndex + 1; i < lines.Length && i < startIndex + 20; i++)
+            {
+                string nextLine = lines[i];
+                
+                if (string.IsNullOrWhiteSpace(nextLine))
+                    break;
+
+                // Check for similar delimiter count
+                int nextDelimiterCount = 0;
+                if (line.Contains("|"))
+                {
+                    nextDelimiterCount = nextLine.Count(c => c == '|');
+                }
+                else if (line.Contains("\t"))
+                {
+                    nextDelimiterCount = nextLine.Count(c => c == '\t');
+                }
+                else if (Regex.IsMatch(nextLine, @"\s{2,}"))
+                {
+                    nextDelimiterCount = Regex.Matches(nextLine, @"\s{2,}").Count;
+                }
+
+                // Allow some variance in delimiter count
+                if (Math.Abs(nextDelimiterCount - delimiterCount) <= 1)
+                {
+                    rowCount++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if (rowCount >= 2)
+            {
+                endIndex = startIndex + rowCount;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 平文テーブルをMarkdownテーブルに変換
+        /// </summary>
+        private string ConvertPlainTextTableToMarkdown(List<string> tableLines)
+        {
+            if (tableLines == null || tableLines.Count == 0) return string.Empty;
+
+            var sb = new StringBuilder();
+            var rows = new List<List<string>>();
+
+            // Parse rows based on delimiters
+            char delimiter = '|';
+            if (!tableLines[0].Contains('|'))
+            {
+                delimiter = tableLines[0].Contains('\t') ? '\t' : ' ';
+            }
+
+            foreach (var line in tableLines)
+            {
+                List<string> cells;
+                if (delimiter == '|')
+                {
+                    cells = line.Split('|')
+                        .Select(c => c.Trim())
+                        .Where(c => !string.IsNullOrEmpty(c))
+                        .ToList();
+                }
+                else if (delimiter == '\t')
+                {
+                    cells = line.Split('\t')
+                        .Select(c => c.Trim())
+                        .ToList();
+                }
+                else
+                {
+                    // Multiple spaces as delimiter
+                    cells = Regex.Split(line, @"\s{2,}")
+                        .Select(c => c.Trim())
+                        .Where(c => !string.IsNullOrEmpty(c))
+                        .ToList();
+                }
+
+                if (cells.Count > 0)
+                    rows.Add(cells);
+            }
+
+            if (rows.Count == 0) return string.Empty;
+
+            // Normalize column count
+            int maxCols = rows.Max(r => r.Count);
+            foreach (var row in rows)
+            {
+                while (row.Count < maxCols)
+                    row.Add("");
+            }
+
+            // Header row
+            sb.Append("|");
+            foreach (var cell in rows[0])
+            {
+                sb.Append($" {cell.Replace("|", "\\|")} |");
+            }
+            sb.AppendLine();
+
+            // Separator
+            sb.Append("|");
+            for (int i = 0; i < maxCols; i++)
+            {
+                sb.Append(" --- |");
+            }
+            sb.AppendLine();
+
+            // Data rows
+            for (int i = 1; i < rows.Count; i++)
+            {
+                sb.Append("|");
+                foreach (var cell in rows[i])
+                {
+                    sb.Append($" {cell.Replace("|", "\\|")} |");
+                }
+                sb.AppendLine();
+            }
+
+            return sb.ToString();
         }
     }
 }
