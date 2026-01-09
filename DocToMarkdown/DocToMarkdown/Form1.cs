@@ -37,6 +37,11 @@ namespace DocToMarkdown
         private const int MAX_TABLE_SCAN_ROWS = 20;         // テーブル検出時の最大スキャン行数
         private const int TABLE_DELIMITER_VARIANCE = 1;     // テーブル区切り文字数の許容誤差
 
+        // 見出し検出用のプリコンパイル済み正規表現パターン
+        private static readonly Regex HeadingNumberedSectionRegex = new Regex(
+            @"^(?:第?[0-9０-９]+[章節項]\.?\s+|[0-9]+(?:\.[0-9]+)*\.?\s+)[^\n]{1," + MAX_HEADING_TEXT_LENGTH + @"}$",
+            RegexOptions.Compiled);
+
         public Form1()
         {
             // Designer/ResX が壊れている環境でも起動できるように、
@@ -1670,10 +1675,38 @@ namespace DocToMarkdown
                 // Check for code blocks (3+ lines of indented content or specific patterns)
                 if (IsCodeBlockStart(lines, i, out int codeBlockEnd))
                 {
+                    // Find minimum common indentation to preserve relative structure
+                    int minIndent = int.MaxValue;
+                    for (int j = i; j < codeBlockEnd; j++)
+                    {
+                        if (!string.IsNullOrWhiteSpace(lines[j]))
+                        {
+                            int indent = 0;
+                            for (int k = 0; k < lines[j].Length && (lines[j][k] == ' ' || lines[j][k] == '\t'); k++)
+                            {
+                                indent += lines[j][k] == '\t' ? 4 : 1;
+                            }
+                            minIndent = Math.Min(minIndent, indent);
+                        }
+                    }
+                    
                     result.AppendLine("```");
                     for (int j = i; j < codeBlockEnd; j++)
                     {
-                        result.AppendLine(lines[j].TrimStart());
+                        // Preserve relative indentation by removing only common leading whitespace
+                        string codeLine = lines[j];
+                        if (!string.IsNullOrWhiteSpace(codeLine) && minIndent > 0 && minIndent < int.MaxValue)
+                        {
+                            int removed = 0;
+                            int pos = 0;
+                            while (removed < minIndent && pos < codeLine.Length && (codeLine[pos] == ' ' || codeLine[pos] == '\t'))
+                            {
+                                removed += codeLine[pos] == '\t' ? 4 : 1;
+                                pos++;
+                            }
+                            codeLine = codeLine.Substring(pos);
+                        }
+                        result.AppendLine(codeLine);
                     }
                     result.AppendLine("```");
                     result.AppendLine();
@@ -1754,7 +1787,7 @@ namespace DocToMarkdown
 
             // Pattern-based heading detection
             // 1. Numbered sections: "1. Introduction", "第1章", "1.1 Overview"
-            if (Regex.IsMatch(trimmed, $@"^(?:第?[0-9０-９]+[章節項]\.?\s+|[0-9]+(?:\.[0-9]+)*\.?\s+)[^\n]{{1,{MAX_HEADING_TEXT_LENGTH}}}$"))
+            if (HeadingNumberedSectionRegex.IsMatch(trimmed))
                 return true;
 
             // 2. Heading markers: "■ Title", "【Title】", "[Title]"
@@ -1979,41 +2012,48 @@ namespace DocToMarkdown
 
             // Check for common delimiters: |, tab, or multiple spaces
             int delimiterCount = 0;
+            char delimiterType = ' '; // ' ' = multi-space, '|' = pipe, '\t' = tab
+            
             if (line.Contains("|"))
             {
                 delimiterCount = line.Count(c => c == '|');
+                delimiterType = '|';
             }
             else if (line.Contains("\t"))
             {
                 delimiterCount = line.Count(c => c == '\t');
+                delimiterType = '\t';
             }
             else if (Regex.IsMatch(line, @"\s{2,}"))
             {
                 delimiterCount = Regex.Matches(line, @"\s{2,}").Count;
+                delimiterType = ' ';
             }
 
             if (delimiterCount < 1) return false;
 
             // Check if next lines have similar structure (limit scan for performance)
             int rowCount = 1;
-            for (int i = startIndex + 1; i < lines.Length && i < startIndex + MAX_TABLE_SCAN_ROWS; i++)
+            int scanEnd = Math.Min(lines.Length, startIndex + MAX_TABLE_SCAN_ROWS);
+            
+            for (int i = startIndex + 1; i < scanEnd; i++)
             {
                 string nextLine = lines[i];
                 
                 if (string.IsNullOrWhiteSpace(nextLine))
                     break;
 
-                // Check for similar delimiter count
+                // Check for similar delimiter count based on detected type
                 int nextDelimiterCount = 0;
-                if (line.Contains("|"))
+                if (delimiterType == '|')
                 {
                     nextDelimiterCount = nextLine.Count(c => c == '|');
                 }
-                else if (line.Contains("\t"))
+                else if (delimiterType == '\t')
                 {
                     nextDelimiterCount = nextLine.Count(c => c == '\t');
                 }
-                else if (Regex.IsMatch(nextLine, @"\s{2,}"))
+                else // multi-space
                 {
                     nextDelimiterCount = Regex.Matches(nextLine, @"\s{2,}").Count;
                 }
