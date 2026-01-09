@@ -28,6 +28,15 @@ namespace DocToMarkdown
         private System.Windows.Forms.Timer busyPulseTimer;
         private int busyPulse;
 
+        // 構造推論の閾値定数
+        private const int MAX_HEADING_WIDTH = 50;           // 見出しとして判定する最大文字幅
+        private const int MAX_HEADING_TEXT_LENGTH = 40;     // 見出し番号後の最大文字数
+        private const int MIN_CODE_BLOCK_LINES = 3;         // コードブロックとする最小行数
+        private const int MIN_CODE_INDENT = 4;              // コードブロックの最小インデント（スペース）
+        private const int CONTINUE_CODE_MIN_INDENT = 2;     // コードブロック継続の最小インデント
+        private const int MAX_TABLE_SCAN_ROWS = 20;         // テーブル検出時の最大スキャン行数
+        private const int TABLE_DELIMITER_VARIANCE = 1;     // テーブル区切り文字数の許容誤差
+
         public Form1()
         {
             // Designer/ResX が壊れている環境でも起動できるように、
@@ -1737,7 +1746,7 @@ namespace DocToMarkdown
             int visualWidth = GetVisualWidth(trimmed);
 
             // Too long to be a heading
-            if (visualWidth > 50) return false;
+            if (visualWidth > MAX_HEADING_WIDTH) return false;
 
             // Empty lines around it suggest heading
             bool prevEmpty = string.IsNullOrWhiteSpace(prevLine);
@@ -1745,7 +1754,7 @@ namespace DocToMarkdown
 
             // Pattern-based heading detection
             // 1. Numbered sections: "1. Introduction", "第1章", "1.1 Overview"
-            if (Regex.IsMatch(trimmed, @"^(?:第?[0-9０-９]+[章節項]\.?\s+|[0-9]+(?:\.[0-9]+)*\.?\s+)[^\n]{1,40}$"))
+            if (Regex.IsMatch(trimmed, $@"^(?:第?[0-9０-９]+[章節項]\.?\s+|[0-9]+(?:\.[0-9]+)*\.?\s+)[^\n]{{1,{MAX_HEADING_TEXT_LENGTH}}}$"))
                 return true;
 
             // 2. Heading markers: "■ Title", "【Title】", "[Title]"
@@ -1897,14 +1906,14 @@ namespace DocToMarkdown
             string line = lines[startIndex];
             if (string.IsNullOrWhiteSpace(line)) return false;
 
-            // Check if line starts with significant indentation (4+ spaces or tab)
+            // Check if line starts with significant indentation
             int indent = 0;
             for (int i = 0; i < line.Length && (line[i] == ' ' || line[i] == '\t'); i++)
             {
                 indent += line[i] == '\t' ? 4 : 1;
             }
 
-            if (indent < 4) return false;
+            if (indent < MIN_CODE_INDENT) return false;
 
             // Check for code-like patterns in the line
             string trimmed = line.Trim();
@@ -1929,14 +1938,14 @@ namespace DocToMarkdown
                     continue;
                 }
 
-                // Check if still indented
+                // Check if still indented (continues code block)
                 int nextIndent = 0;
                 for (int j = 0; j < nextLine.Length && (nextLine[j] == ' ' || nextLine[j] == '\t'); j++)
                 {
                     nextIndent += nextLine[j] == '\t' ? 4 : 1;
                 }
 
-                if (nextIndent >= 2)
+                if (nextIndent >= CONTINUE_CODE_MIN_INDENT)
                 {
                     count++;
                 }
@@ -1946,7 +1955,7 @@ namespace DocToMarkdown
                 }
             }
 
-            if (count >= 3)
+            if (count >= MIN_CODE_BLOCK_LINES)
             {
                 endIndex = startIndex + count;
                 return true;
@@ -1985,9 +1994,9 @@ namespace DocToMarkdown
 
             if (delimiterCount < 1) return false;
 
-            // Check if next lines have similar structure
+            // Check if next lines have similar structure (limit scan for performance)
             int rowCount = 1;
-            for (int i = startIndex + 1; i < lines.Length && i < startIndex + 20; i++)
+            for (int i = startIndex + 1; i < lines.Length && i < startIndex + MAX_TABLE_SCAN_ROWS; i++)
             {
                 string nextLine = lines[i];
                 
@@ -2009,8 +2018,8 @@ namespace DocToMarkdown
                     nextDelimiterCount = Regex.Matches(nextLine, @"\s{2,}").Count;
                 }
 
-                // Allow some variance in delimiter count
-                if (Math.Abs(nextDelimiterCount - delimiterCount) <= 1)
+                // Allow some variance in delimiter count for flexibility
+                if (Math.Abs(nextDelimiterCount - delimiterCount) <= TABLE_DELIMITER_VARIANCE)
                 {
                     rowCount++;
                 }
