@@ -28,6 +28,12 @@ namespace DocToMarkdown
         private System.Windows.Forms.Timer busyPulseTimer;
         private int busyPulse;
 
+        // Constants for structured markdown formatting
+        private const int MAX_BULLET_POINT_LENGTH = 150;
+        private const int MIN_LINES_FOR_BULLET_FORMATTING = 3;
+        private const int HEADING_WIDTH_LEVEL2 = 15;
+        private const int HEADING_WIDTH_LEVEL3 = 30;
+
         public Form1()
         {
             // Designer/ResX が壊れている環境でも起動できるように、
@@ -780,8 +786,8 @@ namespace DocToMarkdown
                     // Determine heading level based on length and context
                     int level = 2; // Default to ##
                     int width = GetVisualWidth(trimmedLine);
-                    if (width <= 15) level = 2;
-                    else if (width <= 30) level = 3;
+                    if (width <= HEADING_WIDTH_LEVEL2) level = 2;
+                    else if (width <= HEADING_WIDTH_LEVEL3) level = 3;
                     else level = 4;
 
                     sb.AppendLine($"{new string('#', level)} {trimmedLine}");
@@ -1279,7 +1285,7 @@ namespace DocToMarkdown
                         else
                         {
                             // Regular text - check if it's short enough to be a bullet point
-                            if (t.Length < 150 && !t.EndsWith("。") && !t.EndsWith(".") && s.Text.Split('\n').Length > 3)
+                            if (t.Length < MAX_BULLET_POINT_LENGTH && !t.EndsWith("。") && !t.EndsWith(".") && s.Text.Split('\n').Length > MIN_LINES_FOR_BULLET_FORMATTING)
                             {
                                 markdown.AppendLine($"- {t}");
                             }
