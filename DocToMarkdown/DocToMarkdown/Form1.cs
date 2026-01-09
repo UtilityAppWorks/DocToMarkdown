@@ -37,9 +37,60 @@ namespace DocToMarkdown
         private const int MAX_TABLE_SCAN_ROWS = 20;         // テーブル検出時の最大スキャン行数
         private const int TABLE_DELIMITER_VARIANCE = 1;     // テーブル区切り文字数の許容誤差
 
-        // 見出し検出用のプリコンパイル済み正規表現パターン
+        // 構造検出用のプリコンパイル済み正規表現パターン
         private static readonly Regex HeadingNumberedSectionRegex = new Regex(
-            @"^(?:第?[0-9０-９]+[章節項]\.?\s+|[0-9]+(?:\.[0-9]+)*\.?\s+)[^\n]{1," + MAX_HEADING_TEXT_LENGTH + @"}$",
+            @"^(?:第?[0-9０-９]+[章節項]\.?\s+|[0-9]+(?:\.[0-9]+)*\.?\s+)[^\n]{1,40}$",
+            RegexOptions.Compiled);
+        private static readonly Regex HeadingMarkersRegex = new Regex(
+            @"^[■□◆◇●○▲△▼▽]+\s+.+$",
+            RegexOptions.Compiled);
+        private static readonly Regex HeadingBracketRegex = new Regex(
+            @"^[【〔\[][^\]】〕]+[\]】〕]$",
+            RegexOptions.Compiled);
+        private static readonly Regex HeadingColonDashRegex = new Regex(
+            @"[:：]\s*$",
+            RegexOptions.Compiled);
+        private static readonly Regex HeadingTrailingDashRegex = new Regex(
+            @"\s+-\s*$",
+            RegexOptions.Compiled);
+        private static readonly Regex HeadingAllCapsRegex = new Regex(
+            @"^[A-Z][A-Z\s]{2,39}$",
+            RegexOptions.Compiled);
+        private static readonly Regex HeadingTitleCaseRegex = new Regex(
+            @"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,6}$",
+            RegexOptions.Compiled);
+        
+        // リスト検出用のプリコンパイル済み正規表現
+        private static readonly Regex ListBulletRegex = new Regex(
+            @"^([-*•・◦▪▫])\s+(.+)$",
+            RegexOptions.Compiled);
+        private static readonly Regex ListNumberedRegex = new Regex(
+            @"^(?:[0-9]+\.|[0-9]+\)|\([0-9]+\))\s+(.+)$",
+            RegexOptions.Compiled);
+        private static readonly Regex ListAlphaRegex = new Regex(
+            @"^(?:[a-zA-Z]\.|[a-zA-Z]\))\s+(.+)$",
+            RegexOptions.Compiled);
+        private static readonly Regex ListCircledRegex = new Regex(
+            @"^[①-⑳]\s+(.+)$",
+            RegexOptions.Compiled);
+        
+        // コードブロック検出用
+        private static readonly Regex CodePatternKeywordsRegex = new Regex(
+            @"^(?:public|private|protected|class|function|def|var|const|let|if|for|while|import|package|using)\s",
+            RegexOptions.Compiled);
+        private static readonly Regex CodePatternSyntaxRegex = new Regex(
+            @"[{};()]",
+            RegexOptions.Compiled);
+        private static readonly Regex CodePatternAssignmentRegex = new Regex(
+            @"^[a-zA-Z_][a-zA-Z0-9_]*\s*[=\(]",
+            RegexOptions.Compiled);
+        private static readonly Regex CodePatternCommentRegex = new Regex(
+            @"^\s*//|^\s*/\*|^\s*#",
+            RegexOptions.Compiled);
+        
+        // テーブル検出用
+        private static readonly Regex TableMultiSpaceRegex = new Regex(
+            @"\s{2,}",
             RegexOptions.Compiled);
 
         public Form1()
@@ -1791,27 +1842,27 @@ namespace DocToMarkdown
                 return true;
 
             // 2. Heading markers: "■ Title", "【Title】", "[Title]"
-            if (Regex.IsMatch(trimmed, @"^[■□◆◇●○▲△▼▽]+\s+.+$"))
+            if (HeadingMarkersRegex.IsMatch(trimmed))
                 return true;
-            if (Regex.IsMatch(trimmed, @"^[【〔\[][^\]】〕]+[\]】〕]$"))
+            if (HeadingBracketRegex.IsMatch(trimmed))
                 return true;
 
             // 3. Short line with colon or dash at end
             if (visualWidth >= 4 && visualWidth <= 40)
             {
-                if (Regex.IsMatch(trimmed, @"[:：]\s*$") && (prevEmpty || nextEmpty))
+                if (HeadingColonDashRegex.IsMatch(trimmed) && (prevEmpty || nextEmpty))
                     return true;
-                if (Regex.IsMatch(trimmed, @"\s+-\s*$") && (prevEmpty || nextEmpty))
+                if (HeadingTrailingDashRegex.IsMatch(trimmed) && (prevEmpty || nextEmpty))
                     return true;
             }
 
             // 4. ALL CAPS short lines (English headings)
-            if (Regex.IsMatch(trimmed, @"^[A-Z][A-Z\s]{2,39}$") && (prevEmpty || nextEmpty))
+            if (HeadingAllCapsRegex.IsMatch(trimmed) && (prevEmpty || nextEmpty))
                 return true;
 
             // 5. Title Case (multiple capitalized words)
             if (visualWidth >= 10 && visualWidth <= 45 && 
-                Regex.IsMatch(trimmed, @"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,6}$") && 
+                HeadingTitleCaseRegex.IsMatch(trimmed) && 
                 (prevEmpty || nextEmpty))
                 return true;
 
@@ -1873,7 +1924,7 @@ namespace DocToMarkdown
             string trimmed = line.TrimStart();
 
             // Bullet points: "- item", "* item", "• item", "・ item"
-            var bulletMatch = Regex.Match(trimmed, @"^([-*•・◦▪▫])\s+(.+)$");
+            var bulletMatch = ListBulletRegex.Match(trimmed);
             if (bulletMatch.Success)
             {
                 marker = bulletMatch.Groups[1].Value;
@@ -1882,7 +1933,7 @@ namespace DocToMarkdown
             }
 
             // Numbered lists: "1. item", "1) item", "(1) item"
-            var numberedMatch = Regex.Match(trimmed, @"^(?:[0-9]+\.|[0-9]+\)|\([0-9]+\))\s+(.+)$");
+            var numberedMatch = ListNumberedRegex.Match(trimmed);
             if (numberedMatch.Success)
             {
                 content = numberedMatch.Groups[1].Value.Trim();
@@ -1890,7 +1941,7 @@ namespace DocToMarkdown
             }
 
             // Alphabetic lists: "a. item", "A) item"
-            var alphaMatch = Regex.Match(trimmed, @"^(?:[a-zA-Z]\.|[a-zA-Z]\))\s+(.+)$");
+            var alphaMatch = ListAlphaRegex.Match(trimmed);
             if (alphaMatch.Success)
             {
                 content = alphaMatch.Groups[1].Value.Trim();
@@ -1898,7 +1949,7 @@ namespace DocToMarkdown
             }
 
             // Japanese circled numbers: ① ② ③
-            var circledMatch = Regex.Match(trimmed, @"^[①-⑳]\s+(.+)$");
+            var circledMatch = ListCircledRegex.Match(trimmed);
             if (circledMatch.Success)
             {
                 content = circledMatch.Groups[1].Value.Trim();
@@ -1951,10 +2002,10 @@ namespace DocToMarkdown
             // Check for code-like patterns in the line
             string trimmed = line.Trim();
             bool hasCodePattern = 
-                Regex.IsMatch(trimmed, @"^(?:public|private|protected|class|function|def|var|const|let|if|for|while|import|package|using)\s") ||
-                Regex.IsMatch(trimmed, @"[{};()]") ||
-                Regex.IsMatch(trimmed, @"^[a-zA-Z_][a-zA-Z0-9_]*\s*[=\(]") ||
-                Regex.IsMatch(trimmed, @"^\s*//|^\s*/\*|^\s*#");
+                CodePatternKeywordsRegex.IsMatch(trimmed) ||
+                CodePatternSyntaxRegex.IsMatch(trimmed) ||
+                CodePatternAssignmentRegex.IsMatch(trimmed) ||
+                CodePatternCommentRegex.IsMatch(trimmed);
 
             if (!hasCodePattern) return false;
 
@@ -2024,9 +2075,9 @@ namespace DocToMarkdown
                 delimiterCount = line.Count(c => c == '\t');
                 delimiterType = '\t';
             }
-            else if (Regex.IsMatch(line, @"\s{2,}"))
+            else if (TableMultiSpaceRegex.IsMatch(line))
             {
-                delimiterCount = Regex.Matches(line, @"\s{2,}").Count;
+                delimiterCount = TableMultiSpaceRegex.Matches(line).Count;
                 delimiterType = ' ';
             }
 
@@ -2055,7 +2106,7 @@ namespace DocToMarkdown
                 }
                 else // multi-space
                 {
-                    nextDelimiterCount = Regex.Matches(nextLine, @"\s{2,}").Count;
+                    nextDelimiterCount = TableMultiSpaceRegex.Matches(nextLine).Count;
                 }
 
                 // Allow some variance in delimiter count for flexibility
