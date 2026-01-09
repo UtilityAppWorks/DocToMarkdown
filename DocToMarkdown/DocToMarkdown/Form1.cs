@@ -653,7 +653,9 @@ namespace DocToMarkdown
             }
 
             dynamic wordApp = null;
+            dynamic documents = null;
             dynamic doc = null;
+            dynamic content = null;
             try
             {
                 wordApp = Activator.CreateInstance(wordType);
@@ -661,14 +663,21 @@ namespace DocToMarkdown
                 wordApp.DisplayAlerts = 0; // wdAlertsNone
 
                 // ReadOnly / Visible=false
-                doc = wordApp.Documents.Open(filePath, ReadOnly: true, Visible: false);
+                // Documents コレクションも明示的に取得して後で解放する
+                documents = wordApp.Documents;
+                doc = documents.Open(filePath, ReadOnly: true, Visible: false);
 
-                // 本文
-                string text = doc.Content.Text as string;
+                // 本文 - Content オブジェクトを明示的に取得して後で解放する
+                content = doc.Content;
+                string text = content.Text as string;
                 return text ?? string.Empty;
             }
             finally
             {
+                // COM オブジェクトを子から順に解放（Content → Document → Documents → Application）
+                try { if (content != null) Marshal.ReleaseComObject(content); } catch { }
+                try { if (documents != null) Marshal.ReleaseComObject(documents); } catch { }
+                
                 try { if (doc != null) { try { doc.Close(false); } catch { } } } catch { }
                 try { if (wordApp != null) { try { wordApp.Quit(false); } catch { } } } catch { }
 
@@ -677,6 +686,8 @@ namespace DocToMarkdown
 
                 try
                 {
+                    content = null;
+                    documents = null;
                     doc = null;
                     wordApp = null;
                 }
